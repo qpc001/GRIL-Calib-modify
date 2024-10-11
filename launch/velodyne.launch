@@ -5,6 +5,8 @@
 
     <rosparam command="load" file="$(find gril_calib)/config/velodyne16.yaml" />
 
+    <rosparam file="$(find gril_calib)/third_party/travel/config/config.yaml" command="load" />
+
     <node pkg="gril_calib" type="gril_calib" name="laserMapping" output="screen"/>
 
     <param name="point_filter_num" type="int" value="3"/>

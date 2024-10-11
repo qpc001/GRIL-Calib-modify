@@ -70,6 +70,8 @@ include_directories(
   ${PYTHON_INCLUDE_DIRS}
   include)
 
+  include_directories(third_party/travel)
+
 add_message_files(
   FILES
   Pose6D.msg

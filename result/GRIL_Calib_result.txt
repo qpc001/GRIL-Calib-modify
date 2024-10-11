@@ -1,0 +1,14 @@
+LiDAR-IMU calibration result:
+Rotation LiDAR to IMU (degree)     =  0.473994  1.071138 -1.733280
+Translation LiDAR to IMU (meter)   =  1.131181 -0.246715  1.320361
+Time Lag IMU to LiDAR (second)     = -0.107145
+Bias of Gyroscope  (rad/s)         = -0.002421  0.000670  0.001450
+Bias of Accelerometer (meters/s^2) = -0.010482 -0.009604 -0.009894
+
+Homogeneous Transformation Matrix from LiDAR frmae L to IMU frame I: 
+ 0.999368  0.030398  0.018433  1.131181
+-0.030239  0.999504 -0.008834 -0.246715
+-0.018692  0.008271  0.999791  1.320361
+ 0.000000  0.000000  0.000000  1.000000
+
+

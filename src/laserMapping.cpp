@@ -53,6 +53,9 @@
 #include <ikd-Tree/ikd_Tree.h>
 #include <Gril_Calib/Gril_Calib.h>
 
+#include <pcl/filters/extract_indices.h>
+#include <pcl/segmentation/sac_segmentation.h>
+
 // For visualize
 #ifndef DEPLOY
 #include "matplotlibcpp.h"
@@ -66,6 +69,7 @@ ros::Time estimate_timestamp_;
 
 // For ground segmentation
 #include "GroundSegmentation/patchworkpp.hpp"
+#include "GroundSegmentation/GroundSegmentation.hpp"
 
 ros::Publisher pub_cloud;
 ros::Publisher pub_ground;
@@ -73,8 +77,8 @@ ros::Publisher pub_non_ground;
 
 double time_taken;
 pcl::PointCloud<pcl::PointXYZI> curr_points;
-pcl::PointCloud<pcl::PointXYZI> ground_points;
-pcl::PointCloud<pcl::PointXYZI> non_ground_points;
+pcl::PointCloud<pcl::PointXYZI>::Ptr ground_points;
+pcl::PointCloud<pcl::PointXYZI>::Ptr non_ground_points;
 
 // For disable PCL complile lib, to use PointXYZIR
 #define PCL_NO_PRECOMPILE
@@ -186,6 +190,7 @@ shared_ptr<Preprocess> p_pre(new Preprocess());
 shared_ptr<Gril_Calib> Calib_LI(new Gril_Calib());
 
 boost::shared_ptr<PatchWorkpp<pcl::PointXYZI>> PatchworkppGroundSeg;
+std::shared_ptr<GroundSegmentation> ground_seg_ptr;
 
 // visualize ground segmenation result
 template<typename T> 
@@ -438,11 +443,48 @@ void standard_pcl_cbk(const sensor_msgs::PointCloud2::ConstPtr &msg) {
     if (lidar_type == VELO || lidar_type == VELO_NCLT || lidar_type == OUSTER || lidar_type == PANDAR || lidar_type == VELO_without_Time) {
         pcl::fromROSMsg(*msg, curr_points);
 
-        PatchworkppGroundSeg->estimate_ground(curr_points, ground_points, non_ground_points, time_taken);
+        //PatchworkppGroundSeg->estimate_ground(curr_points, ground_points, non_ground_points, time_taken);
+
+        ground_seg_ptr->computeTravel(curr_points, ground_points, non_ground_points);
+
+    // 创建分割器对象
+    pcl::SACSegmentation<pcl::PointXYZI> seg;
+    pcl::PointIndices::Ptr inliers(new pcl::PointIndices);
+    pcl::ModelCoefficients::Ptr coefficients(new pcl::ModelCoefficients);
+
+    // 设置分割器参数
+    seg.setOptimizeCoefficients(true);
+    seg.setModelType(pcl::SACMODEL_PLANE);
+    seg.setMethodType(pcl::SAC_RANSAC);
+    seg.setMaxIterations(1000);
+    seg.setDistanceThreshold(0.2);
+
+    // 执行平面分割
+    seg.setInputCloud(ground_points);
+    seg.segment(*inliers, *coefficients);
+
+    // 提取平面点
+    pcl::PointCloud<pcl::PointXYZI>::Ptr plane(new pcl::PointCloud<pcl::PointXYZI>);
+    pcl::ExtractIndices<pcl::PointXYZI> extract;
+    extract.setInputCloud(ground_points);
+    extract.setIndices(inliers);
+    extract.setNegative(false);
+    extract.filter(*ground_points);
+
+    // 输出平面点
+    std::cout << "Plane points: " << plane->size() << std::endl;
+
+    // 提取噪点
+    // pcl::PointCloud<pcl::PointXYZI>::Ptr noise(new pcl::PointCloud<pcl::PointXYZI>);
+    // extract.setNegative(true);
+    // extract.filter(*noise);
+
+    // // 输出噪点
+    // std::cout << "Noise points: " << noise->size() << std::endl;
 
         pub_cloud.publish(cloud2msg(curr_points));
-        pub_ground.publish(cloud2msg(ground_points));
-        pub_non_ground.publish(cloud2msg(non_ground_points));
+        pub_ground.publish(cloud2msg(*ground_points));
+        pub_non_ground.publish(cloud2msg(*non_ground_points));
     }
     
 
@@ -808,7 +850,7 @@ void get_quat_LiDAR_plane_to_gravity(Eigen::Quaterniond &lidar_q, V3D& normal_ve
     /** Normal vector estimation as a result of ground segmentation **/
     Eigen::Vector4f plane_parameters;
     float curvature;
-    computePointNormal(ground_points, plane_parameters, curvature);
+    computePointNormal(*ground_points, plane_parameters, curvature);
 
     /** Roll, pitch, and yaw estimation with respect to the Earth's gravity direction vector using the ground plane normal vector **/
     V3D normal_plane = {plane_parameters[0], plane_parameters[1], plane_parameters[2]};
@@ -931,6 +973,13 @@ int main(int argc, char **argv) {
     /*** Ground Segmentation ***/
     cout << "Operating patchwork++..." << endl;
     PatchworkppGroundSeg.reset(new PatchWorkpp<pcl::PointXYZI>(&nh));
+    TravelGroundSegPtr ground_seg;
+    ObjectClusterPtr object_seg;
+    buildTravel(nh, ground_seg, object_seg);
+    ground_seg_ptr.reset(new GroundSegmentation(ground_seg, object_seg, false, 0.1));
+
+    ground_points.reset(new pcl::PointCloud<pcl::PointXYZI>);
+    non_ground_points.reset(new pcl::PointCloud<pcl::PointXYZI>);
 
     // LI Init Related
     MatrixXd Jaco_rot(30000, 3);
